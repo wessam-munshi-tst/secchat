@@ -21,9 +21,9 @@
     --border-radius-lg: 30px;
     --border-radius-md: 20px;
     --border-radius-sm: 10px;
-    --logo-size-lg: 900px;
-    --logo-size-md: 800px;
-    --logo-size-sm: 740px;
+    --logo-size-lg: 500px;
+    --logo-size-md: 500px;
+    --logo-size-sm: 540px;
 }
 
 * {
