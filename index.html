@@ -12,6 +12,15 @@
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
     <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="preload" href="/static/bg.jpg" as="image">
+    <style>
+        /* Page background image */
+        body {
+            background: #e9ecef url('/static/bg.jpg') center center / cover no-repeat;
+        }
+        /* Hide the colored blobs so they don't tint the image */
+        body::before, body::after { display: none; }
+    </style>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#ffffff">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,12 +37,7 @@
 
     <div class="container">
         <main>
-            <div class="logo-container">
-              
-                <img src="/static/zin.png" alt="Logo" class="logo" width="2000" height="2000">
-            
-
-            </div>
+          
 
             <div class="visualizer-container" role="img" aria-label="Audio visualizer">
                 <canvas id="visualizer" aria-hidden="true"></canvas>
