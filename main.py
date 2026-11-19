@@ -42,9 +42,11 @@ class Settings(BaseSettings):
     
     google_api_key: str = Field(..., description="Google API key for Gemini access")
     gemini_model: str = Field(
-        default="gemini-2.5-flash-native-audio-preview-12-2025",
+        default="gemini-3.8-live",
         description="Gemini model identifier"
     )
+    # Show live transcription (what the user says + what the bot says) on screen
+    enable_transcription: bool = Field(default=True)
     sample_rate: int = Field(default=24000, ge=8000, le=48000)
     silence_duration_ms: int = Field(default=50, ge=50, le=2000)
     generation_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
@@ -59,6 +61,22 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Live models that Google has already shut down. If .env still points to one of
+# them, the connection fails silently in a reconnect loop (no listening, no
+# speaking), so we fall back to the current model automatically.
+RETIRED_LIVE_MODELS: frozenset[str] = frozenset({
+    "gemini-2.5-flash-native-audio-preview-12-2025",
+    "gemini-2.5-flash-native-audio-preview-09-2025",
+    "gemini-2.5-flash-native-audio-latest",
+    "gemini-live-2.5-flash-preview",
+    "gemini-2.0-flash-live-001",
+    "gemini-3.1-flash-live-preview",
+})
+if settings.gemini_model in RETIRED_LIVE_MODELS:
+    print(f"[WARN] Model '{settings.gemini_model}' has been shut down by Google; using 'gemini-3.8-live' instead. "
+          f"Update GEMINI_MODEL in your .env file.")
+    settings.gemini_model = "gemini-3.8-live"
 
 
 # =============================================================================
@@ -538,18 +556,24 @@ class GeminiAudioSession:
     
     def _build_config(self) -> types.LiveConnectConfig:
         """Build the Gemini Live connection configuration."""
+        extra: dict = {}
+        if settings.enable_transcription:
+            # Transcribe the user's speech and the bot's spoken reply
+            extra["input_audio_transcription"] = types.AudioTranscriptionConfig()
+            extra["output_audio_transcription"] = types.AudioTranscriptionConfig()
+
+        # NOTE: the old nested generation_config / thinking_config is not
+        # accepted by the newer live models, so temperature is set top-level
+        # and thinking settings are omitted.
         return types.LiveConnectConfig(
             response_modalities=["AUDIO"],
+            temperature=settings.generation_temperature,
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
                         voice_name=self.tenant.current_voice
                     )
                 )
-            ),
-            generation_config=types.GenerationConfig(
-                temperature=settings.generation_temperature,
-                thinking_config=types.ThinkingConfig(include_thoughts=False)
             ),
             system_instruction=types.Content(
                 parts=[types.Part(text=self.tenant.system_instructions)]
@@ -558,7 +582,8 @@ class GeminiAudioSession:
                 automatic_activity_detection=types.AutomaticActivityDetection(
                     silence_duration_ms=settings.silence_duration_ms
                 )
-            )
+            ),
+            **extra,
         )
     
     async def _receive_audio(self, session) -> None:
@@ -577,14 +602,36 @@ class GeminiAudioSession:
         """Process a single response from Gemini."""
         if self._client_disconnected:
             return
-            
-        if not (response.server_content and response.server_content.model_turn):
+
+        sc = response.server_content
+        if not sc:
             return
-            
+
+        # --- Live transcription (user speech + bot speech) ---
+        try:
+            if sc.input_transcription and sc.input_transcription.text:
+                await self.websocket.send_json(
+                    {"type": "transcript", "role": "user", "text": sc.input_transcription.text}
+                )
+            if sc.output_transcription and sc.output_transcription.text and not self.tenant.is_muted:
+                await self.websocket.send_json(
+                    {"type": "transcript", "role": "bot", "text": sc.output_transcription.text}
+                )
+            if sc.interrupted:
+                await self.websocket.send_json({"type": "interrupt"})
+            if sc.turn_complete:
+                await self.websocket.send_json({"type": "turn_complete"})
+        except Exception:
+            self._client_disconnected = True
+            return
+
+        if not sc.model_turn or not sc.model_turn.parts:
+            return
+
         if self.tenant.is_muted:
             return
-        
-        for part in response.server_content.model_turn.parts:
+
+        for part in sc.model_turn.parts:
             if part.inline_data:
                 try:
                     data = part.inline_data.data
@@ -601,7 +648,7 @@ class GeminiAudioSession:
                 data = await self.websocket.receive_bytes()
                 metrics.total_audio_bytes_received += len(data)
                 await session.send_realtime_input(
-                    media=types.Blob(
+                    audio=types.Blob(
                         data=data, 
                         mime_type=f"audio/pcm;rate={settings.sample_rate}"
                     )

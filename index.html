@@ -40,6 +40,12 @@
                 <canvas id="visualizer" aria-hidden="true"></canvas>
             </div>
     </div>
+
+    <!-- Live transcript: what the robot hears and what it says -->
+    <div id="transcript" dir="auto" aria-live="polite"></div>
+
+    <!-- Shown only if the browser blocks audio until the user taps -->
+    <div id="tapHint">اضغط على الشاشة لبدء المحادثة</div>
     <script src="/static/app.js"></script>
     <script>
         // ====== Image Display System ======

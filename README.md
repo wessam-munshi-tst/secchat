@@ -32,7 +32,7 @@ Environment variables (`.env`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | *required* | Google API key for Gemini |
-| `GEMINI_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | Model identifier |
+| `GEMINI_MODEL` | `gemini-3.8-live` | Model identifier |
 | `SAMPLE_RATE` | `24000` | Audio sample rate (Hz) |
 | `SILENCE_DURATION_MS` | `50` | VAD silence duration |
 | `GENERATION_TEMPERATURE` | `0.3` | Response creativity |
